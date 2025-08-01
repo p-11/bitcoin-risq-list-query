@@ -1,18 +1,40 @@
 -- ======================
+-- Bitcoin at Quantum Risk Query - OPTIMIZED VERSION
+-- Using partitioned transactions table for massive cost reduction
+-- ======================
+
+-- ======================
+-- USAGE EXAMPLES:
+-- For first 100k blocks: SET cutoff_month = '2010-12-01', cutoff_block = 100000
+-- For testing: SET cutoff_month = '2009-12-01', cutoff_block = 50000  
+-- For full dataset: SET cutoff_month = '2024-12-01', cutoff_block = 900000
+-- ====================== 
+
+-- ======================
+-- CONFIGURATION VARIABLES - Easy to modify!
+-- ======================
+DECLARE cutoff_month DATE DEFAULT '2011-01-01';        -- Partition filter (adjust for time range)
+DECLARE cutoff_block INT64 DEFAULT 100000;            -- Block number filter (set high for full dataset)
+
+-- ======================
 -- 1. Addresses with script types that only reveal pubkey WHEN spent
 --    (excludes 'pubkey'; I will handle that separately)
 -- ======================
 WITH potentially_exposed AS (
   SELECT
-    o.transaction_hash,
-    o.index,
+    t.hash AS transaction_hash,
+    o_index AS index,
     addr AS address
   FROM
-    `bigquery-public-data.crypto_bitcoin.outputs` o
+    `bigquery-public-data.crypto_bitcoin.transactions` t
+  CROSS JOIN
+    UNNEST(t.outputs) AS o WITH OFFSET AS o_index
   CROSS JOIN
     UNNEST(o.addresses) AS addr
   WHERE
-    o.type IN (
+    t.block_timestamp_month <= cutoff_month    -- partition filter ✔
+    AND t.block_number <= cutoff_block        -- logical filter
+    AND o.type IN (
       'pubkeyhash',
       'witness_v0_keyhash',
       'witness_v1_taproot',
@@ -34,9 +56,14 @@ spent_details AS (
     i.spent_output_index AS spent_tx_index,
     addr AS spending_address
   FROM
-    `bigquery-public-data.crypto_bitcoin.inputs` i
+    `bigquery-public-data.crypto_bitcoin.transactions` t
+  CROSS JOIN
+    UNNEST(t.inputs) AS i
   CROSS JOIN
     UNNEST(i.addresses) AS addr
+  WHERE
+    t.block_timestamp_month <= cutoff_month    -- partition filter ✔
+    AND t.block_number <= cutoff_block        -- logical filter
 ),
 
 -- ======================
@@ -61,11 +88,15 @@ p2pk_addresses AS (
   SELECT DISTINCT
     addr AS address
   FROM
-    `bigquery-public-data.crypto_bitcoin.outputs` o
+    `bigquery-public-data.crypto_bitcoin.transactions` t
+  CROSS JOIN
+    UNNEST(t.outputs) AS o
   CROSS JOIN
     UNNEST(o.addresses) AS addr
   WHERE
-    o.type = 'pubkey'
+    t.block_timestamp_month <= cutoff_month    -- partition filter ✔
+    AND t.block_number <= cutoff_block        -- logical filter
+    AND o.type = 'pubkey'
 ),
 
 -- ======================
@@ -78,24 +109,39 @@ all_exposed_addresses AS (
 ),
 
 -- ======================
--- 6. All unspent outputs => standard approach
---    (i.spent_transaction_hash IS NULL means still unspent)
+-- 6. All unspent outputs => using partitioned approach
+--    We'll get unspent by finding outputs not in spent_details
 -- ======================
-unspent AS (
+all_outputs AS (
   SELECT
+    t.hash AS transaction_hash,
+    o_index AS output_index,
     o.value,
     addr AS address
   FROM
-    `bigquery-public-data.crypto_bitcoin.outputs` o
+    `bigquery-public-data.crypto_bitcoin.transactions` t
+  CROSS JOIN
+    UNNEST(t.outputs) AS o WITH OFFSET AS o_index
   CROSS JOIN
     UNNEST(o.addresses) AS addr
-  LEFT JOIN
-    `bigquery-public-data.crypto_bitcoin.inputs` i
-  ON
-    o.transaction_hash = i.spent_transaction_hash
-    AND o.index = i.spent_output_index
   WHERE
-    i.spent_transaction_hash IS NULL
+    t.block_timestamp_month <= cutoff_month    -- partition filter ✔
+    AND t.block_number <= cutoff_block        -- logical filter
+),
+
+unspent AS (
+  SELECT
+    ao.value,
+    ao.address
+  FROM
+    all_outputs ao
+  LEFT JOIN
+    spent_details sd
+  ON
+    ao.transaction_hash = sd.spent_tx_hash
+    AND ao.output_index = sd.spent_tx_index
+  WHERE
+    sd.spent_tx_hash IS NULL  -- unspent condition
 ),
 
 -- ======================
@@ -124,4 +170,4 @@ FROM
 WHERE
   balance > 0
 ORDER BY
-  balance DESC; 
+  balance DESC;
