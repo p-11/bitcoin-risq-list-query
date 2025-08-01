@@ -8,13 +8,18 @@
 -- For first 100k blocks: SET cutoff_month = '2010-12-01', cutoff_block = 100000
 -- For testing: SET cutoff_month = '2009-12-01', cutoff_block = 50000  
 -- For full dataset: SET cutoff_month = '2024-12-01', cutoff_block = 900000
--- ====================== 
+-- ======================
 
 -- ======================
 -- CONFIGURATION VARIABLES - Easy to modify!
 -- ======================
 DECLARE cutoff_month DATE DEFAULT '2011-01-01';        -- Partition filter (adjust for time range)
 DECLARE cutoff_block INT64 DEFAULT 100000;            -- Block number filter (set high for full dataset)
+
+-- ======================
+-- TABLE DESTINATION - Update with your project/dataset!
+-- ======================
+CREATE OR REPLACE TABLE `your-project.your_dataset.your_table_name` AS
 
 -- ======================
 -- 1. Addresses with script types that only reveal pubkey WHEN spent
