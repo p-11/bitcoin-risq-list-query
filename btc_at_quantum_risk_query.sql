@@ -1,5 +1,5 @@
 -- ============================================================================
--- SECTION 0: QUERY OVERVIEW
+-- QUERY OVERVIEW
 -- ============================================================================
 -- Purpose: Identify Bitcoin addresses with exposed public keys and their balances
 -- Output: List of quantum-vulnerable addresses and their unspent balances
@@ -8,7 +8,7 @@
 -- to reduce the amount of data scanned and query costs.
 
 -- ============================================================================
--- SECTION 1: USAGE EXAMPLES AND CONFIGURATION
+-- USAGE EXAMPLES AND CONFIGURATION
 -- ============================================================================
 -- USAGE SCENARIOS:
 --
@@ -23,14 +23,14 @@ DECLARE cutoff_month DATE DEFAULT '2011-01-01';        -- Partition filter (adju
 DECLARE cutoff_block INT64 DEFAULT 100000;            -- Block number filter (set high for full dataset)
 
 -- ============================================================================
--- SECTION 2: OUTPUT TABLE CONFIGURATION
+-- OUTPUT TABLE CONFIGURATION
 -- ============================================================================
 -- Purpose: Define the destination table for query results
 -- Note: Update the table reference below with your specific project and dataset
 CREATE OR REPLACE TABLE `your-project.your_dataset.your_table_name` AS
 
 -- ============================================================================
--- SECTION 3: IDENTIFY ADDRESSES POTENTIALLY EXPOSED BY ADDRESS REUSE
+-- IDENTIFY ADDRESSES POTENTIALLY EXPOSED BY ADDRESS REUSE
 -- ============================================================================
 -- Purpose: Find addresses that use script types requiring pubkey revelation on spend
 -- Details: 
@@ -42,19 +42,19 @@ CREATE OR REPLACE TABLE `your-project.your_dataset.your_table_name` AS
 --   - address: The Bitcoin address associated with the output
 WITH addresses_potentially_exposed_on_spend AS (
   SELECT
-    t.hash AS transaction_hash,
-    o_index AS index,
-    addr AS address
+    transaction.hash AS transaction_hash,
+    output_index AS index,
+    output_address AS address
   FROM
-    `bigquery-public-data.crypto_bitcoin.transactions` t
+    `bigquery-public-data.crypto_bitcoin.transactions` transaction
   CROSS JOIN
-    UNNEST(t.outputs) AS o WITH OFFSET AS o_index
+    UNNEST(transaction.outputs) AS output WITH OFFSET AS output_index
   CROSS JOIN
-    UNNEST(o.addresses) AS addr
+    UNNEST(output.addresses) AS output_address
   WHERE
-    t.block_timestamp_month <= cutoff_month    -- partition filter ✔
-    AND t.block_number <= cutoff_block        -- logical filter
-    AND o.type IN (
+    transaction.block_timestamp_month <= cutoff_month
+    AND transaction.block_number <= cutoff_block
+    AND output.type IN (
       'pubkeyhash',
       'witness_v0_keyhash',
       'witness_v1_taproot',
@@ -67,34 +67,34 @@ WITH addresses_potentially_exposed_on_spend AS (
 ),
 
 -- ============================================================================
--- SECTION 4: IDENTIFY ALL SPENT OUTPUTS
+-- IDENTIFY ALL SPENT OUTPUTS
 -- ============================================================================
 -- Purpose: Identify all spent outputs
 -- Details:
 --   - Links spending transactions to their corresponding inputs
 --   - Maintains the same cutoff constraints for consistency
 -- Output: For each spent output:
---   - spent_tx_hash: Hash of the transaction being spent
---   - spent_tx_index: Index of the output being spent
+--   - spent_transaction_hash: Hash of the transaction being spent
+--   - spent_output_index: Index of the output being spent
 --   - spending_address: Address that spent the output
 spent_outputs AS (
   SELECT
-    i.spent_transaction_hash AS spent_tx_hash,
-    i.spent_output_index AS spent_tx_index,
-    addr AS spending_address
+    input.spent_transaction_hash AS spent_transaction_hash,
+    input.spent_output_index AS spent_output_index,
+    input_address AS spending_address
   FROM
-    `bigquery-public-data.crypto_bitcoin.transactions` t
+    `bigquery-public-data.crypto_bitcoin.transactions` transaction
   CROSS JOIN
-    UNNEST(t.inputs) AS i
+    UNNEST(transaction.inputs) AS input
   CROSS JOIN
-    UNNEST(i.addresses) AS addr
+    UNNEST(input.addresses) AS input_address
   WHERE
-    t.block_timestamp_month <= cutoff_month    -- partition filter ✔
-    AND t.block_number <= cutoff_block        -- logical filter
+    transaction.block_timestamp_month <= cutoff_month
+    AND transaction.block_number <= cutoff_block
 ),
 
 -- ============================================================================
--- SECTION 5: IDENTIFY CONFIRMED ADDRESSES THAT EXPOSED THEIR PUBLIC KEY VIA SPENDING
+-- IDENTIFY CONFIRMED ADDRESSES THAT EXPOSED THEIR PUBLIC KEY VIA SPENDING
 -- ============================================================================
 -- Purpose: Find all addresses that have definitely exposed their public keys
 -- Details:
@@ -106,17 +106,17 @@ spent_outputs AS (
 --   - address: The Bitcoin address that has revealed its public key through any spend
 addresses_exposed_by_spend AS (
   SELECT DISTINCT
-    p.address
+    potentially_exposed.address
   FROM
-    addresses_potentially_exposed_on_spend p
+    addresses_potentially_exposed_on_spend potentially_exposed
   JOIN
-    spent_outputs s
+    spent_outputs spent
   ON
-    p.address = s.spending_address
+    potentially_exposed.address = spent.spending_address
 ),
 
 -- ============================================================================
--- SECTION 6: IDENTIFY ADDRESSES WITH QUANTUM-VULNERABLE SCRIPT TYPES
+-- IDENTIFY ADDRESSES WITH QUANTUM-VULNERABLE SCRIPT TYPES
 -- ============================================================================
 -- Purpose: Find addresses that used P2PK script type (public key exposed on creation)
 -- Details:
@@ -127,21 +127,21 @@ addresses_exposed_by_spend AS (
 --   - address: The Bitcoin addresses associated with the quantum-vulnerable scripts
 addresses_exposed_by_script_type AS (
   SELECT DISTINCT
-    addr AS address
+    output_address AS address
   FROM
-    `bigquery-public-data.crypto_bitcoin.transactions` t
+    `bigquery-public-data.crypto_bitcoin.transactions` transaction
   CROSS JOIN
-    UNNEST(t.outputs) AS o
+    UNNEST(transaction.outputs) AS output
   CROSS JOIN
-    UNNEST(o.addresses) AS addr
+    UNNEST(output.addresses) AS output_address
   WHERE
-    t.block_timestamp_month <= cutoff_month    -- partition filter ✔
-    AND t.block_number <= cutoff_block        -- logical filter
-    AND o.type = 'pubkey'
+    transaction.block_timestamp_month <= cutoff_month
+    AND transaction.block_number <= cutoff_block
+    AND output.type = 'pubkey'
 ),
 
 -- ============================================================================
--- SECTION 7: COMBINE ALL EXPOSED ADDRESSES
+-- COMBINE ALL EXPOSED ADDRESSES
 -- ============================================================================
 -- Purpose: Create a complete set of all addresses that have exposed public keys
 -- Details:
@@ -157,7 +157,7 @@ quantum_vulnerable_addresses AS (
 ),
 
 -- ============================================================================
--- SECTION 8: IDENTIFY ALL UNSPENT OUTPUTS
+-- IDENTIFY ALL UNSPENT OUTPUTS
 -- ============================================================================
 -- Purpose: Find all unspent transaction outputs (UTXOs) within our analysis window
 -- Details:
@@ -171,38 +171,37 @@ quantum_vulnerable_addresses AS (
 --   - address: The Bitcoin address controlling this output
 all_outputs AS (
   SELECT
-    t.hash AS transaction_hash,
-    o_index AS output_index,
-    o.value,
-    addr AS address
+    transaction.hash AS transaction_hash,
+    output_index AS output_index,
+    output.value,
+    output_address AS address
   FROM
-    `bigquery-public-data.crypto_bitcoin.transactions` t
+    `bigquery-public-data.crypto_bitcoin.transactions` transaction
   CROSS JOIN
-    UNNEST(t.outputs) AS o WITH OFFSET AS o_index
+    UNNEST(transaction.outputs) AS output WITH OFFSET AS output_index
   CROSS JOIN
-    UNNEST(o.addresses) AS addr
+    UNNEST(output.addresses) AS output_address
   WHERE
-    t.block_timestamp_month <= cutoff_month    -- partition filter ✔
-    AND t.block_number <= cutoff_block        -- logical filter
+    transaction.block_timestamp_month <= cutoff_month
+    AND transaction.block_number <= cutoff_block
 ),
 
 unspent_outputs AS (
   SELECT
-    ao.value,
-    ao.address
+    outputs.value,
+    outputs.address
   FROM
-    all_outputs ao
+    all_outputs outputs
   LEFT JOIN
-    spent_outputs sd
-  ON
-    ao.transaction_hash = sd.spent_tx_hash
-    AND ao.output_index = sd.spent_tx_index
+    spent_outputs spent
+    ON  outputs.transaction_hash = spent.spent_transaction_hash
+    AND outputs.output_index = spent.spent_output_index
   WHERE
-    sd.spent_tx_hash IS NULL  -- unspent condition
+    spent.spent_transaction_hash IS NULL
 ),
 
 -- ============================================================================
--- SECTION 9: CALCULATE BALANCES FOR EXPOSED ADDRESSES
+-- CALCULATE BALANCES FOR EXPOSED ADDRESSES
 -- ============================================================================
 -- Purpose: Sum the unspent balances for all addresses with exposed public keys
 -- Details:
@@ -213,18 +212,21 @@ unspent_outputs AS (
 --   - balance: Total sum of all unspent outputs for this address (in satoshis)
 quantum_vulnerable_addresses_with_metadata AS (
   SELECT
-    u.address,
-    SUM(u.value) AS balance
+    unspent.address,
+    SUM(unspent.value) AS balance
   FROM
-    unspent_outputs u
+    unspent_outputs unspent
   WHERE
-    u.address IN (SELECT address FROM quantum_vulnerable_addresses)
+    unspent.address IN (
+      SELECT address 
+      FROM quantum_vulnerable_addresses
+    )
   GROUP BY
-    u.address
+    unspent.address
 )
 
 -- ============================================================================
--- SECTION 10: GENERATE FINAL RESULTS
+-- GENERATE FINAL RESULTS
 -- ============================================================================
 -- Purpose: Output addresses with exposed public keys that have non-zero balances
 -- Details:
@@ -234,11 +236,11 @@ quantum_vulnerable_addresses_with_metadata AS (
 --   - address: The Bitcoin address that has exposed its public key
 --   - balance: Total unspent amount controlled by this address (in satoshis)
 SELECT
-  address,
-  balance
+    address,
+    balance
 FROM
-  quantum_vulnerable_addresses_with_metadata
+    quantum_vulnerable_addresses_with_metadata
 WHERE
-  balance > 0
+    balance > 0
 ORDER BY
-  balance DESC;
+    balance DESC;
