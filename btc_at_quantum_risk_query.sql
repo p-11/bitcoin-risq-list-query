@@ -98,11 +98,12 @@ spent_details AS (
 -- ============================================================================
 -- Purpose: Find all addresses that have definitely exposed their public keys
 -- Details:
---   - Joins potentially exposed addresses with actual spend events
---   - Uses DISTINCT to eliminate duplicate exposures
---   - Creates definitive list of addresses known to have revealed pubkeys
+--   - Each Bitcoin address corresponds to exactly one public key
+--   - Any spend from an address reveals its public key
+--   - Once revealed, the public key is exposed for all outputs of that address
+--   - Uses DISTINCT to eliminate duplicate address entries
 -- Output: For each exposed address:
---   - address: The Bitcoin address that has revealed its public key through spending
+--   - address: The Bitcoin address that has revealed its public key through any spend
 revealed_by_spend AS (
   SELECT DISTINCT
     p.address
@@ -111,8 +112,7 @@ revealed_by_spend AS (
   JOIN
     spent_details s
   ON
-    p.transaction_hash = s.spent_tx_hash
-    AND p.index = s.spent_tx_index
+    p.address = s.spending_address
 ),
 
 -- ============================================================================
