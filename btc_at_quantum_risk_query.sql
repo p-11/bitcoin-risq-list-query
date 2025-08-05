@@ -106,13 +106,14 @@ spent_outputs AS (
 --   - address: The Bitcoin address that has revealed its public key through any spend
 addresses_exposed_by_spend AS (
   SELECT DISTINCT
-    potentially_exposed.address
+    potential.address
   FROM
-    addresses_potentially_exposed_on_spend potentially_exposed
+    addresses_potentially_exposed_on_spend potential
   JOIN
     spent_outputs spent
   ON
-    potentially_exposed.address = spent.spending_address
+    potential.transaction_hash = spent.spent_transaction_hash
+    AND potential.index = spent.spent_output_index
 ),
 
 -- ============================================================================
