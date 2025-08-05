@@ -40,7 +40,7 @@ CREATE OR REPLACE TABLE `your-project.your_dataset.your_table_name` AS
 --   - transaction_hash: Hash of the transaction containing the output
 --   - index: Position of the output in the transaction (zero-based)
 --   - address: The Bitcoin address associated with the output
-WITH potentially_exposed AS (
+WITH addresses_potentially_exposed_on_spend AS (
   SELECT
     t.hash AS transaction_hash,
     o_index AS index,
@@ -77,7 +77,7 @@ WITH potentially_exposed AS (
 --   - spent_tx_hash: Hash of the transaction being spent
 --   - spent_tx_index: Index of the output being spent
 --   - spending_address: Address that spent the output
-spent_details AS (
+spent_outputs AS (
   SELECT
     i.spent_transaction_hash AS spent_tx_hash,
     i.spent_output_index AS spent_tx_index,
@@ -104,13 +104,13 @@ spent_details AS (
 --   - Uses DISTINCT to eliminate duplicate address entries
 -- Output: For each exposed address:
 --   - address: The Bitcoin address that has revealed its public key through any spend
-revealed_by_spend AS (
+addresses_exposed_by_spend AS (
   SELECT DISTINCT
     p.address
   FROM
-    potentially_exposed p
+    addresses_potentially_exposed_on_spend p
   JOIN
-    spent_details s
+    spent_outputs s
   ON
     p.address = s.spending_address
 ),
@@ -125,7 +125,7 @@ revealed_by_spend AS (
 --   - Uses same cutoff constraints as other sections
 -- Output: For each P2PK output:
 --   - address: The Bitcoin addresses associated with the quantum-vulnerable scripts
-p2pk_addresses AS (
+addresses_exposed_by_script_type AS (
   SELECT DISTINCT
     addr AS address
   FROM
@@ -150,10 +150,10 @@ p2pk_addresses AS (
 --   - Creates final reference list for balance calculation
 -- Output: For each unique exposed address:
 --   - address: The Bitcoin address that has exposed its public key (either through spending or P2PK)
-all_exposed_addresses AS (
-  SELECT address FROM revealed_by_spend
+quantum_vulnerable_addresses AS (
+  SELECT address FROM addresses_exposed_by_spend
   UNION DISTINCT
-  SELECT address FROM p2pk_addresses
+  SELECT address FROM addresses_exposed_by_script_type
 ),
 
 -- ============================================================================
@@ -186,14 +186,14 @@ all_outputs AS (
     AND t.block_number <= cutoff_block        -- logical filter
 ),
 
-unspent AS (
+unspent_outputs AS (
   SELECT
     ao.value,
     ao.address
   FROM
     all_outputs ao
   LEFT JOIN
-    spent_details sd
+    spent_outputs sd
   ON
     ao.transaction_hash = sd.spent_tx_hash
     AND ao.output_index = sd.spent_tx_index
@@ -211,14 +211,14 @@ unspent AS (
 -- Output: For each exposed address with unspent outputs:
 --   - address: The Bitcoin address that has exposed its public key
 --   - balance: Total sum of all unspent outputs for this address (in satoshis)
-final AS (
+quantum_vulnerable_addresses_with_metadata AS (
   SELECT
     u.address,
     SUM(u.value) AS balance
   FROM
-    unspent u
+    unspent_outputs u
   WHERE
-    u.address IN (SELECT address FROM all_exposed_addresses)
+    u.address IN (SELECT address FROM quantum_vulnerable_addresses)
   GROUP BY
     u.address
 )
@@ -237,7 +237,7 @@ SELECT
   address,
   balance
 FROM
-  final
+  quantum_vulnerable_addresses_with_metadata
 WHERE
   balance > 0
 ORDER BY
