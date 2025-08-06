@@ -126,6 +126,9 @@ addresses_exposed_by_spend AS (
 --   - Uses same cutoff constraints as other sections
 -- Output: For each P2PK output:
 --   - address: The Bitcoin addresses associated with the quantum-vulnerable scripts
+--   - Note: For P2PK and P2MS script types, addresses are shown in P2PKH format
+--     since these script types don't have their own formal address format.
+--     These are derived from the public keys in the scripts.
 addresses_exposed_by_script_type AS (
   SELECT DISTINCT
     output_address AS address
