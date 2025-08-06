@@ -34,7 +34,7 @@ CREATE OR REPLACE TABLE `your-project.your_dataset.your_table_name` AS
 -- ============================================================================
 -- Purpose: Find addresses that use script types requiring pubkey revelation on spend
 -- Details: 
---   - Includes address types: P2PKH, P2WPKH, P2TR, P2SH, P2WPKH, P2WSH.
+--   - Includes address types: P2PKH, P2WPKH, P2SH, P2WSH.
 --   - Only considers transactions up to specified cutoff block/month
 -- Output: For each qualifying output:
 --   - transaction_hash: Hash of the transaction containing the output
@@ -57,12 +57,9 @@ WITH addresses_potentially_exposed_on_spend AS (
     AND output.type IN (
       'pubkeyhash',
       'witness_v0_keyhash',
-      'witness_v1_taproot',
       'witness_v0_scripthash',
       'witness_unknown',
-      'multisig',
       'scripthash'
-      -- Add or remove other types as needed
     )
 ),
 
@@ -117,18 +114,20 @@ addresses_exposed_by_spend AS (
 ),
 
 -- ============================================================================
--- IDENTIFY ADDRESSES WITH QUANTUM-VULNERABLE SCRIPT TYPES
+-- IDENTIFY ADDRESSES WITH PUBLIC KEYS IN OUTPUT SCRIPTS
 -- ============================================================================
--- Purpose: Find addresses that used P2PK script type (public key exposed on creation)
+-- Purpose: Find addresses from scripts that expose public keys in the output (no spend needed)
 -- Details:
---   - P2PK outputs expose public keys immediately in the locking script
---   - These addresses are at quantum risk from the moment of creation
+--   - Includes three script types that expose keys immediately:
+--     1. P2PK (Pay to Public Key)
+--     2. P2MS (Bare Multi-Signature)
+--     3. P2TR (Pay to Taproot)
+--   - These addresses are quantum-vulnerable from the moment of creation
 --   - Uses same cutoff constraints as other sections
--- Output: For each P2PK output:
---   - address: The Bitcoin addresses associated with the quantum-vulnerable scripts
---   - Note: For P2PK and P2MS script types, addresses are shown in P2PKH format
---     since these script types don't have their own formal address format.
---     These are derived from the public keys in the scripts.
+-- Output: For each output with exposed public key:
+--   - address: The Bitcoin address derived from the exposed public key
+--   - Note: For P2PK and P2MS, addresses are shown in P2PKH format since these
+--     script types don't have their own address format.
 addresses_exposed_by_script_type AS (
   SELECT DISTINCT
     output_address AS address
@@ -141,7 +140,11 @@ addresses_exposed_by_script_type AS (
   WHERE
     transaction.block_timestamp_month <= cutoff_month
     AND transaction.block_number <= cutoff_block
-    AND output.type = 'pubkey'
+    AND output.type IN (
+      'pubkey',
+      'multisig',
+      'witness_v1_taproot'
+    )
 ),
 
 -- ============================================================================
