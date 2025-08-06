@@ -13,7 +13,7 @@
 -- USAGE SCENARIOS:
 --
 --   1. Initial Analysis (First 100k blocks):
---      SET cutoff_month = '2010-12-01', cutoff_block = 100000
+--      SET cutoff_month = '2011-01-01', cutoff_block = 100000
 --
 --   2. Full Dataset Analysis (as of August 2025):
 --      SET cutoff_month = '2025-12-12', cutoff_block = 950000
