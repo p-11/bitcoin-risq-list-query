@@ -224,12 +224,14 @@ quantum_vulnerable_addresses_with_metadata AS (
   SELECT
     unspent.address,
     SUM(unspent.value) AS balance,
-    -- Note on script_type selection:
-    -- A single P2PKH-encoded address can appear in multiple categories because:
-    -- 1. BigQuery encodes P2PK and P2MS outputs using their P2PKH address equivalent
-    -- 2. The same address could receive both P2PKH and P2PK/P2MS outputs
-    -- Since both script types are equally valid indicators of quantum vulnerability,
-    -- we arbitrarily select one script_type per address using ARRAY_AGG/LIMIT.
+    -- Note on final `script_type` selection while aggregating results into final
+    -- list of addresses:
+    -- A single P2PKH-encoded address can in theory appear in multiple categories
+    -- because BigQuery encodes P2PK and P2MS outputs using their P2PKH address
+    -- equivalent. Hence, a single address could be labelled quantum-vulnerable due to
+    -- both P2PKH spends and P2PK/P2MS usage. Since both script types are equally
+    -- valid indicators of quantum vulnerability, we arbitrarily select one
+    -- `script_type` per address using ARRAY_AGG/LIMIT with alphabetical ordering.
     -- The alphabetical ordering has no special meaning; it's just a stable way to pick one.
     qva_map.script_type
   FROM
