@@ -44,7 +44,8 @@ WITH addresses_potentially_exposed_on_spend AS (
   SELECT
     transaction.hash AS transaction_hash,
     output_index AS index,
-    output_address AS address
+    output_address AS address,
+    output.type AS script_type
   FROM
     `bigquery-public-data.crypto_bitcoin.transactions` transaction
   CROSS JOIN
@@ -103,7 +104,8 @@ spent_outputs AS (
 --   - address: The Bitcoin address that has revealed its public key through any spend
 addresses_exposed_by_spend AS (
   SELECT DISTINCT
-    potential.address
+    potential.address,
+    potential.script_type
   FROM
     addresses_potentially_exposed_on_spend potential
   JOIN
@@ -130,7 +132,8 @@ addresses_exposed_by_spend AS (
 --     script types don't have their own address format.
 addresses_exposed_by_script_type AS (
   SELECT DISTINCT
-    output_address AS address
+    output_address AS address,
+    output.type AS script_type
   FROM
     `bigquery-public-data.crypto_bitcoin.transactions` transaction
   CROSS JOIN
@@ -158,9 +161,9 @@ addresses_exposed_by_script_type AS (
 -- Output: For each unique exposed address:
 --   - address: The Bitcoin address that has exposed its public key (either through spending or P2PK)
 quantum_vulnerable_addresses AS (
-  SELECT address FROM addresses_exposed_by_spend
+  SELECT address, script_type FROM addresses_exposed_by_spend
   UNION DISTINCT
-  SELECT address FROM addresses_exposed_by_script_type
+  SELECT address, script_type FROM addresses_exposed_by_script_type
 ),
 
 -- ============================================================================
@@ -220,16 +223,30 @@ unspent_outputs AS (
 quantum_vulnerable_addresses_with_metadata AS (
   SELECT
     unspent.address,
-    SUM(unspent.value) AS balance
+    SUM(unspent.value) AS balance,
+    -- Note on final `script_type` selection while aggregating results into final
+    -- list of addresses:
+    -- A single P2PKH-encoded address can in theory appear in multiple categories
+    -- because BigQuery encodes P2PK and P2MS outputs using their P2PKH address
+    -- equivalent. Hence, a single address could be labelled quantum-vulnerable due to
+    -- both P2PKH spends and P2PK/P2MS usage. Since both script types are equally
+    -- valid indicators of quantum vulnerability, we arbitrarily select one
+    -- `script_type` per address using ARRAY_AGG/LIMIT with alphabetical ordering.
+    -- The alphabetical ordering has no special meaning; it's just a stable way to pick one.
+    qva_map.script_type
   FROM
-    unspent_outputs unspent
-  WHERE
-    unspent.address IN (
-      SELECT address 
-      FROM quantum_vulnerable_addresses
-    )
+    unspent_outputs AS unspent
+  JOIN (
+    SELECT
+      address,
+      ARRAY_AGG(script_type ORDER BY script_type LIMIT 1)[OFFSET(0)] AS script_type
+    FROM quantum_vulnerable_addresses
+    GROUP BY address
+  ) AS qva_map
+  ON unspent.address = qva_map.address
   GROUP BY
-    unspent.address
+    unspent.address,
+    qva_map.script_type
 )
 
 -- ============================================================================
@@ -244,7 +261,8 @@ quantum_vulnerable_addresses_with_metadata AS (
 --   - balance: Total unspent amount controlled by this address (in satoshis)
 SELECT
     address,
-    balance
+    balance,
+    script_type
 FROM
     quantum_vulnerable_addresses_with_metadata
 WHERE
