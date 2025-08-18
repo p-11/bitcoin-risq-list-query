@@ -1,6 +1,6 @@
-# BTC at Risk Query
+# BTC at Risq Query
 
-This repository contains the SQL query used to identify quantum-vulnerable Bitcoin addresses on the Bitcoin mainnet blockchain. This query powers the [BTC at Risk Tracker](https://www.projecteleven.com/btc-at-risk) by analyzing the public Bitcoin blockchain data available through the [BigQuery Bitcoin ETL](https://github.com/blockchain-etl/bitcoin-etl).
+This repository contains the SQL query used to identify quantum-vulnerable Bitcoin addresses on the Bitcoin mainnet blockchain. This query powers the [BTC at Risq Tracker](https://www.projecteleven.com/btc-at-risq) by analyzing the public Bitcoin blockchain data available through the [BigQuery Bitcoin ETL](https://github.com/blockchain-etl/bitcoin-etl).
 
 ## What Makes an Address Quantum-Vulnerable?
 
