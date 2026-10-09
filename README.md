@@ -35,7 +35,7 @@ To run this query:
 
 ## Check the Dataset First
 
-The query decides which outputs are unspent by looking for the inputs that spend them, so it assumes `bigquery-public-data.crypto_bitcoin` holds every block. If a block is missing, the coins its inputs spent look unspent and balances come out too high, and deposits made in that block are lost. This happened between July and mid-September 2025, when the dataset was missing about 2,100 blocks before Google backfilled it.
+The query decides which outputs are unspent by looking for the inputs that spend them, so it assumes `bigquery-public-data.crypto_bitcoin` holds every block. If a block is missing, the coins its inputs spent look unspent and balances come out too high, and deposits made in that block are lost. This happened between July and mid-September 2026, when the dataset was missing about 2,100 blocks before Google backfilled it.
 
 Before trusting results, run `check_dataset_completeness.sql` with the same `cutoff_month` and `cutoff_block`. It reads only block heights and transaction counts, and returns `is_complete = TRUE` when every block up to the cutoff is present exactly once with all of its transactions.
 

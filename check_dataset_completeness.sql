@@ -9,7 +9,7 @@
 -- inputs that spend them. If a block is missing, its inputs are missing too, so
 -- the coins they spent look unspent and balances come out too high. Deposits
 -- made in the missing block are lost, so other balances come out too low.
--- Between July and mid-September 2025 the dataset was missing about 2,100
+-- Between July and mid-September 2026 the dataset was missing about 2,100
 -- blocks, which was reported to have inflated the total by roughly 1M BTC.
 --
 -- Result: one row. `is_complete` must be TRUE before the main query's results
